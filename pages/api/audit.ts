@@ -45,8 +45,8 @@ export default async function handler(
       html = html.replace(/<(title|meta|link|script|h1|h2|h3)/gi, '\n<$1')
 
       const $ = cheerio.load(html, {
-        normalizeWhitespace: false,
-        decodeEntities: true,
+        
+        xml: { decodeEntities: true }
       })
 
       // Analiza
