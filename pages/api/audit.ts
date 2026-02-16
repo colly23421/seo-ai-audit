@@ -10,71 +10,114 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { url } = req.body
+  const { input, mode, results } = req.body
 
-  if (!url) {
-    return res.status(400).json({ error: 'URL is required' })
-  }
+  console.log('=== AUDIT REQUEST ===')
+  console.log('Mode:', mode)
+  console.log('Has results:', !!results)
 
   try {
-    // Pobierz HTML strony
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; SEO-Audit-Bot/1.0)',
-      },
-      timeout: 15000,
-      maxRedirects: 5,
-    })
+    let finalResults: any
 
-    const html = response.data
-    const $ = cheerio.load(html)
+    // TRYB 1: Otrzymaliśmy już przeanalizowane wyniki z frontendu (HTML paste mode)
+    if (mode === 'results' && results) {
+      console.log('Using pre-analyzed results from client')
+      finalResults = results
+      finalResults.url = 'HTML wklejony przez użytkownika'
+    }
+    // TRYB 2: URL mode - pobierz i analizuj na backendzie
+    else if (mode === 'url' && input) {
+      console.log('URL mode - fetching:', input)
+      const url = input
 
-    // Analiza meta tagów
-    const metaTags = analyzeMetaTags($)
+      const response = await axios.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        timeout: 15000,
+        maxRedirects: 5,
+      })
 
-    // Analiza nagłówków
-    const headings = analyzeHeadings($)
+      let html = response.data
+      
+      // Normalizacja HTML
+      html = html.replace(/></g, '> <')
+      html = html.replace(/<(title|meta|link|script|h1|h2|h3)/gi, '\n<$1')
 
-    // Analiza JSON-LD
-    const jsonLd = analyzeJsonLd($)
+      const $ = cheerio.load(html, {
+        normalizeWhitespace: false,
+        decodeEntities: true,
+      })
 
-    // Analiza FAQ
-    const faq = analyzeFaq($, jsonLd)
+      // Analiza
+      const metaTags = analyzeMetaTags($)
+      const headings = analyzeHeadings($)
+      const jsonLd = analyzeJsonLd($)
+      const faq = analyzeFaq($, jsonLd)
+      const socialTags = analyzeSocialTags($)
+      const technical = await checkTechnicalSEO(url)
 
-    // Analiza tagów social media
-    const socialTags = analyzeSocialTags($)
+      finalResults = {
+        url,
+        metaTags,
+        headings,
+        jsonLd,
+        faq,
+        socialTags,
+        technical,
+      }
+    }
+    // TRYB 3: Fallback - stary tryb (dla kompatybilności)
+    else if (req.body.url) {
+      console.log('Legacy URL mode')
+      const url = req.body.url
 
-    // Analiza techniczna
-    const technical = await checkTechnicalSEO(url)
+      const response = await axios.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; SEO-Audit-Bot/1.0)',
+        },
+        timeout: 15000,
+        maxRedirects: 5,
+      })
 
-    // Oblicz ogólny wynik
-    const overallScore = calculateOverallScore({
-      metaTags,
-      headings,
-      jsonLd,
-      faq,
-      socialTags,
-    })
+      let html = response.data
+      html = html.replace(/></g, '> <')
+      
+      const $ = cheerio.load(html)
 
-    // Generuj rekomendacje
-    const recommendations = generateRecommendations({
-      metaTags,
-      headings,
-      jsonLd,
-      faq,
-      socialTags,
-      technical,
-    })
+      const metaTags = analyzeMetaTags($)
+      const headings = analyzeHeadings($)
+      const jsonLd = analyzeJsonLd($)
+      const faq = analyzeFaq($, jsonLd)
+      const socialTags = analyzeSocialTags($)
+      const technical = await checkTechnicalSEO(url)
+
+      finalResults = {
+        url,
+        metaTags,
+        headings,
+        jsonLd,
+        faq,
+        socialTags,
+        technical,
+      }
+    }
+    else {
+      return res.status(400).json({ 
+        error: 'Invalid request - missing input, mode, or results' 
+      })
+    }
+
+    // Oblicz wynik i rekomendacje
+    const overallScore = calculateOverallScore(finalResults)
+    const recommendations = generateRecommendations(finalResults)
+
+    console.log('=== AUDIT SUCCESS ===')
+    console.log('Score:', overallScore)
 
     res.status(200).json({
-      url,
+      ...finalResults,
       overallScore,
-      metaTags,
-      headings,
-      jsonLd,
-      faq,
-      socialTags,
-      technical,
       recommendations,
       aiVisibility: {
         note: 'Sprawdzanie widoczności w Google AI Overview wymaga dedykowanego API',
@@ -82,17 +125,20 @@ export default async function handler(
       },
     })
   } catch (error: any) {
-    console.error('Audit error:', error)
+    console.error('=== AUDIT ERROR ===')
+    console.error('Error:', error.message)
+    
     res.status(500).json({
       error: 'Nie udało się przeanalizować strony. Sprawdź, czy URL jest poprawny i dostępny.',
+      details: error.message,
     })
   }
 }
 
 function analyzeMetaTags($: cheerio.CheerioAPI) {
-  const title = $('title').text().trim()
-  const description = $('meta[name="description"]').attr('content') || ''
-  const canonical = $('link[rel="canonical"]').attr('href') || ''
+  const title = $('title').first().text().trim()
+  const description = $('meta[name="description"]').first().attr('content')?.trim() || ''
+  const canonical = $('link[rel="canonical"]').first().attr('href') || ''
 
   return {
     title: {
@@ -100,7 +146,9 @@ function analyzeMetaTags($: cheerio.CheerioAPI) {
       length: title.length,
       status: title.length >= 30 && title.length <= 60 ? 'good' : 'warning',
       recommendation:
-        title.length < 30
+        title.length === 0
+          ? 'KRYTYCZNE: Brak tytułu strony!'
+          : title.length < 30
           ? 'Tytuł jest za krótki (min 30 znaków)'
           : title.length > 60
           ? 'Tytuł jest za długi (max 60 znaków)'
@@ -114,7 +162,9 @@ function analyzeMetaTags($: cheerio.CheerioAPI) {
           ? 'good'
           : 'warning',
       recommendation:
-        description.length < 120
+        description.length === 0
+          ? 'KRYTYCZNE: Brak meta description!'
+          : description.length < 120
           ? 'Description jest za krótki (min 120 znaków)'
           : description.length > 160
           ? 'Description jest za długi (max 160 znaków)'
@@ -139,7 +189,9 @@ function analyzeHeadings($: cheerio.CheerioAPI) {
       const text = $(el).text().trim()
       if (text) {
         headings[tag].count++
-        headings[tag].values.push(text)
+        if (headings[tag].values.length < 5) {
+          headings[tag].values.push(text)
+        }
       }
     })
   })
@@ -268,7 +320,7 @@ function analyzeJsonLd($: cheerio.CheerioAPI) {
           warnings: [] as string[],
           missingFields: [] as string[],
           severity: 'critical',
-          data: content,
+          data: content?.substring(0, 200) + '...',
         })
       }
     }
@@ -318,7 +370,7 @@ function analyzeFaq($: cheerio.CheerioAPI, jsonLd: any) {
         const question = $(el).text().trim()
         const answer = $(el).next().text().trim()
         
-        if (question && answer) {
+        if (question && answer && items.length < 10) {
           found = true
           count++
           items.push({ question, answer })
@@ -404,126 +456,90 @@ async function checkTechnicalSEO(url: string) {
 
 function calculateOverallScore(data: any): number {
   let score = 0
-  let maxScore = 0
+  let maxScore = 100
 
   // Meta tagi (30 punktów)
-  maxScore += 30
-  if (data.metaTags.title.status === 'good') score += 15
-  else if (data.metaTags.title.value) score += 8
+  if (data.metaTags?.title?.status === 'good') score += 15
+  else if (data.metaTags?.title?.value) score += 8
   
-  if (data.metaTags.description.status === 'good') score += 15
-  else if (data.metaTags.description.value) score += 8
+  if (data.metaTags?.description?.status === 'good') score += 15
+  else if (data.metaTags?.description?.value) score += 8
 
   // Nagłówki (20 punktów)
-  maxScore += 20
-  if (data.headings.h1.count === 1) score += 10
-  else if (data.headings.h1.count > 0) score += 5
+  if (data.headings?.h1?.count === 1) score += 10
+  else if (data.headings?.h1?.count > 0) score += 5
   
-  if (data.headings.h2.count > 0) score += 10
+  if (data.headings?.h2?.count > 0) score += 10
 
   // JSON-LD (25 punktów)
-  maxScore += 25
-  if (data.jsonLd.found) {
-    score += 15
+  if (data.jsonLd?.found) {
+    score += 10
     const validSchemas = data.jsonLd.schemas.filter((s: any) => s.valid).length
-    score += Math.min(10, validSchemas * 5)
+    score += Math.min(15, validSchemas * 8)
   }
 
   // FAQ (10 punktów)
-  maxScore += 10
-  if (data.faq.found) score += 10
+  if (data.faq?.found) score += 10
 
   // Social tags (15 punktów)
-  maxScore += 15
-  if (data.socialTags.openGraph.found) score += 8
-  if (data.socialTags.twitter.found) score += 7
+  if (data.socialTags?.openGraph?.found) score += 8
+  if (data.socialTags?.twitter?.found) score += 7
 
-  return Math.round((score / maxScore) * 100)
+  return Math.round(score)
 }
 
 function generateRecommendations(data: any): string[] {
   const recommendations: string[] = []
 
-  if (data.metaTags.title.status !== 'good') {
+  // Meta tagi
+  if (data.metaTags?.title?.length === 0) {
+    recommendations.push('🚨 KRYTYCZNE: Dodaj tytuł strony (tag <title>)')
+  } else if (data.metaTags?.title?.status !== 'good') {
+    recommendations.push(`⚠️ ${data.metaTags.title.recommendation}`)
+  }
+
+  if (data.metaTags?.description?.length === 0) {
+    recommendations.push('🚨 KRYTYCZNE: Dodaj meta description')
+  } else if (data.metaTags?.description?.status !== 'good') {
+    recommendations.push(`⚠️ ${data.metaTags.description.recommendation}`)
+  }
+
+  // Nagłówki
+  if (data.headings?.h1?.count === 0) {
+    recommendations.push('🚨 Dodaj nagłówek H1 na stronie')
+  } else if (data.headings?.h1?.count > 1) {
+    recommendations.push(`⚠️ Użyj tylko jednego H1 (obecnie: ${data.headings.h1.count})`)
+  }
+
+  // JSON-LD
+  if (!data.jsonLd?.found) {
     recommendations.push(
-      `Popraw tytuł strony: ${data.metaTags.title.recommendation}`
+      '🚨 Brak struktur JSON-LD! Dodaj Schema.org markup dla lepszej widoczności w Google i AI'
     )
+  } else if (data.jsonLd?.hasCriticalIssues) {
+    recommendations.push('🚨 Krytyczne błędy w JSON-LD - sprawdź szczegóły')
   }
 
-  if (data.metaTags.description.status !== 'good') {
-    recommendations.push(
-      `Popraw meta description: ${data.metaTags.description.recommendation}`
-    )
+  // FAQ
+  if (!data.faq?.found) {
+    recommendations.push('💡 Dodaj sekcję FAQ ze schema markup FAQPage')
   }
 
-  if (data.headings.h1.count === 0) {
-    recommendations.push('Dodaj nagłówek H1 na stronie')
-  } else if (data.headings.h1.count > 1) {
-    recommendations.push(
-      'Użyj tylko jednego nagłówka H1 na stronie (obecnie: ' +
-        data.headings.h1.count +
-        ')'
-    )
+  // Social
+  if (!data.socialTags?.openGraph?.found) {
+    recommendations.push('💡 Dodaj tagi Open Graph')
   }
 
-  if (!data.jsonLd.found) {
-    recommendations.push(
-      'Dodaj struktury JSON-LD (Schema.org) aby poprawić widoczność w wyszukiwarkach i AI'
-    )
-  } else {
-    if (data.jsonLd.hasCriticalIssues) {
-      recommendations.push(
-        'Napraw krytyczne błędy w strukturach JSON-LD - sprawdź szczegóły w raporcie'
-      )
-    }
-    data.jsonLd.schemas.forEach((schema: any) => {
-      if (schema.missingFields.length > 0) {
-        recommendations.push(
-          `${schema.type}: Uzupełnij brakujące pola - ${schema.missingFields.slice(0, 3).join(', ')}`
-        )
-      }
-    })
-  }
-
-  if (!data.faq.found) {
-    recommendations.push(
-      'Dodaj sekcję FAQ ze schema markup FAQPage aby zwiększyć widoczność w Google i chatach AI'
-    )
-  }
-
-  if (!data.socialTags.openGraph.found) {
-    recommendations.push(
-      'Dodaj tagi Open Graph dla lepszego wyświetlania w mediach społecznościowych'
-    )
-  }
-
-  if (!data.socialTags.twitter.found) {
-    recommendations.push('Dodaj Twitter Card meta tagi')
-  }
-
-  if (!data.metaTags.canonical) {
-    recommendations.push(
-      'Dodaj canonical URL aby uniknąć problemów z duplikacją treści'
-    )
-  }
-
+  // Technical
   if (data.technical && !data.technical.ssl) {
-    recommendations.push('⚠️ KRYTYCZNE: Strona nie używa HTTPS - natychmiast włącz SSL!')
-  }
-
-  if (data.technical && !data.technical.robotsTxt.found) {
-    recommendations.push('Utwórz plik robots.txt aby kontrolować indeksowanie')
-  }
-
-  if (data.technical && !data.technical.sitemap.found) {
-    recommendations.push('Utwórz sitemap.xml aby ułatwić indeksowanie przez Google')
+    recommendations.push('🚨 KRYTYCZNE: Włącz HTTPS!')
   }
 
   if (recommendations.length === 0) {
-    recommendations.push(
-      'Świetna robota! Twoja strona jest dobrze zoptymalizowana. Rozważ regularne audyty aby utrzymać wysoki standard.'
-    )
+    recommendations.push('✅ Świetna robota! Strona dobrze zoptymalizowana.')
   }
+
+  recommendations.push('🎯 Zamów pełny audyt na collytics.io/audyt-widocznosci-ai.html')
 
   return recommendations
 }
