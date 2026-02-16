@@ -14,21 +14,41 @@ const handleAudit = async (input: string, mode: 'url' | 'html') => {
   setAuditData(null)
 
   try {
-    const response = await fetch('/api/audit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input, mode }),
-    })
-
-    const data = await response.json()
-    
-    if (!response.ok) {
-      setAuditData({
-        error: data.error || 'Wystąpił błąd podczas audytu',
-        details: data.details || '',
+    if (mode === 'html') {
+      // CLIENT-SIDE parsing (bez wysyłania całego HTML!)
+      console.log('Analyzing HTML in browser...')
+      const results = analyzeHTML(input)
+      
+      // Wyślij tylko małe wyniki do API
+      const response = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          mode: 'results',
+          results,
+        }),
       })
-    } else {
+
+      const data = await response.json()
       setAuditData(data)
+    } else {
+      // Tryb URL - normalnie
+      const response = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input, mode }),
+      })
+
+      const data = await response.json()
+      
+      if (!response.ok) {
+        setAuditData({
+          error: data.error || 'Wystąpił błąd podczas audytu',
+          details: data.details || '',
+        })
+      } else {
+        setAuditData(data)
+      }
     }
   } catch (error: any) {
     console.error('Audit error:', error)
