@@ -8,27 +8,37 @@ export default function Home() {
   const [auditData, setAuditData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
-  const handleAudit = async (input: string, mode: 'url' | 'html') => {
-    setLoading(true)
-    setAuditData(null)
+const handleAudit = async (input: string, mode: 'url' | 'html') => {
+  setLoading(true)
+  setAuditData(null)
 
-    try {
-      const response = await fetch('/api/audit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input, mode }),
-      })
+  try {
+    const response = await fetch('/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input, mode }),
+    })
 
-      const data = await response.json()
-      setAuditData(data)
-    } catch (error) {
+    const data = await response.json()
+    
+    if (!response.ok) {
       setAuditData({
-        error: 'Wystąpił błąd podczas audytu. Spróbuj ponownie.',
+        error: data.error || 'Wystąpił błąd podczas audytu',
+        details: data.details || '',
       })
-    } finally {
-      setLoading(false)
+    } else {
+      setAuditData(data)
     }
+  } catch (error: any) {
+    console.error('Audit error:', error)
+    setAuditData({
+      error: 'Wystąpił błąd podczas audytu. Spróbuj ponownie.',
+      details: error.message,
+    })
+  } finally {
+    setLoading(false)
   }
+}
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
