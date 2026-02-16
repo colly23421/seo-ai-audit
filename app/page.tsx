@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import AuditForm from '../components/AuditForm'
 import AuditReport from '../components/AuditReport'
+import { analyzeHTML } from '../lib/analyzer'
 
 export default function Home() {
   const [auditData, setAuditData] = useState<any>(null)
