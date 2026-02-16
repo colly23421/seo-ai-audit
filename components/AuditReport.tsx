@@ -1,167 +1,60 @@
-interface AuditReportProps {
-  data: any
-}
-
-export default function AuditReport({ data }: AuditReportProps) {
+export default function AuditReport({ data }: { data: any }) {
   if (data.error) {
     return (
       <div className="mt-12 max-w-4xl mx-auto">
         <div className="bg-red-50 border border-red-200 rounded-xl p-6">
-          <h2 className="text-2xl font-bold text-red-800 mb-2">Błąd</h2>
+          <h2 className="text-2xl font-bold text-red-800">Błąd</h2>
           <p className="text-red-600">{data.error}</p>
         </div>
       </div>
     )
   }
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600'
-    if (score >= 50) return 'text-yellow-600'
-    return 'text-red-600'
-  }
-
-  const getScoreBg = (score: number) => {
-    if (score >= 80) return 'bg-green-100'
-    if (score >= 50) return 'bg-yellow-100'
-    return 'bg-red-100'
-  }
-
   return (
     <div className="mt-12 max-w-6xl mx-auto">
       <div className="mb-8 bg-white rounded-2xl shadow-xl p-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Raport Audytu</h2>
-            <p className="text-gray-600">{data.url}</p>
-          </div>
-          <div className={`text-center p-6 rounded-xl ${getScoreBg(data.overallScore)}`}>
-            <div className={`text-5xl font-bold ${getScoreColor(data.overallScore)}`}>
-              {data.overallScore}
-            </div>
-            <div className="text-sm text-gray-600 mt-1">/ 100</div>
-          </div>
-        </div>
-
-        <div className="mt-6 p-6 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl text-white">
-          <h3 className="text-2xl font-bold mb-3">🚀 Potrzebujesz pomocy?</h3>
-          <p className="mb-4 text-blue-100">
-            Zamów pełny audyt widoczności w AI i otrzymaj szczegółowy raport z rekomendacjami!
-          </p>
-          
-            href="https://www.collytics.io/audyt-widocznosci-ai.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block bg-white text-blue-600 font-bold py-3 px-8 rounded-lg hover:bg-blue-50 transition"
-          >
-            Zamów profesjonalny audyt →
+        <h2 className="text-3xl font-bold text-gray-900 mb-4">Raport Audytu</h2>
+        <p className="text-gray-600 mb-4">{data.url}</p>
+        <div className="text-5xl font-bold text-blue-600 mb-4">{data.overallScore} / 100</div>
+        
+        <div className="mt-6 p-6 bg-blue-600 rounded-xl text-white">
+          <h3 className="text-2xl font-bold mb-3">Potrzebujesz pomocy?</h3>
+          <a href="https://www.collytics.io/audyt-widocznosci-ai.html" target="_blank" rel="noopener noreferrer" className="inline-block bg-white text-blue-600 font-bold py-3 px-8 rounded-lg">
+            Zamów audyt
           </a>
         </div>
       </div>
 
       <div className="mb-8 bg-white rounded-2xl shadow-xl p-8">
-        <h3 className="text-2xl font-bold text-gray-900 mb-6">📄 Meta Tagi</h3>
-        
-        <div className="mb-4 border-l-4 border-blue-500 pl-4">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-semibold text-gray-700">Title</h4>
-            <StatusBadge status={data.metaTags.title.status} />
-          </div>
-          <p className="text-gray-900 font-medium">{data.metaTags.title.value || 'Brak'}</p>
-          <p className="text-sm text-gray-500 mt-1">
-            Długość: {data.metaTags.title.length} znaków
-          </p>
-        </div>
-
-        <div className="border-l-4 border-purple-500 pl-4">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-semibold text-gray-700">Meta Description</h4>
-            <StatusBadge status={data.metaTags.description.status} />
-          </div>
-          <p className="text-gray-900">{data.metaTags.description.value || 'Brak'}</p>
-          <p className="text-sm text-gray-500 mt-1">
-            Długość: {data.metaTags.description.length} znaków
-          </p>
-        </div>
+        <h3 className="text-2xl font-bold mb-4">Meta Tagi</h3>
+        <p>Title: {data.metaTags.title.value || 'Brak'} ({data.metaTags.title.length} znaków)</p>
+        <p>Description: {data.metaTags.description.value || 'Brak'} ({data.metaTags.description.length} znaków)</p>
       </div>
 
       <div className="mb-8 bg-white rounded-2xl shadow-xl p-8">
-        <h3 className="text-2xl font-bold text-gray-900 mb-6">📋 Struktura Nagłówków</h3>
-        <div className="text-gray-700">
-          <p>H1: {data.headings.h1.count} nagłówków</p>
-          <p>H2: {data.headings.h2.count} nagłówków</p>
-          <p>H3: {data.headings.h3.count} nagłówków</p>
-        </div>
+        <h3 className="text-2xl font-bold mb-4">Nagłówki</h3>
+        <p>H1: {data.headings.h1.count}</p>
+        <p>H2: {data.headings.h2.count}</p>
       </div>
 
       <div className="mb-8 bg-white rounded-2xl shadow-xl p-8">
-        <h3 className="text-2xl font-bold text-gray-900 mb-6">🔗 JSON-LD Schema</h3>
-        {data.jsonLd.found ? (
-          <div className="text-green-700">
-            ✅ Znaleziono {data.jsonLd.count} struktur JSON-LD
-          </div>
-        ) : (
-          <div className="text-red-700">
-            ❌ Nie znaleziono struktur JSON-LD
-          </div>
-        )}
+        <h3 className="text-2xl font-bold mb-4">JSON-LD</h3>
+        <p>{data.jsonLd.found ? `Znaleziono ${data.jsonLd.count} struktur` : 'Brak struktur'}</p>
       </div>
 
       <div className="mb-8 bg-white rounded-2xl shadow-xl p-8">
-        <h3 className="text-2xl font-bold text-gray-900 mb-6">❓ FAQ</h3>
-        {data.faq.found ? (
-          <div className="text-green-700">
-            ✅ Znaleziono sekcję FAQ ({data.faq.count} pytań)
-          </div>
-        ) : (
-          <div className="text-yellow-700">
-            ⚠️ Nie znaleziono sekcji FAQ
-          </div>
-        )}
+        <h3 className="text-2xl font-bold mb-4">FAQ</h3>
+        <p>{data.faq.found ? `Znaleziono ${data.faq.count} pytań` : 'Brak FAQ'}</p>
       </div>
 
       <div className="mb-8 bg-white rounded-2xl shadow-xl p-8">
-        <h3 className="text-2xl font-bold text-gray-900 mb-6">💡 Rekomendacje</h3>
-        <ul className="list-disc list-inside">
+        <h3 className="text-2xl font-bold mb-4">Rekomendacje</h3>
+        <ul className="list-disc pl-6">
           {data.recommendations.map((rec: string, idx: number) => (
-            <li key={idx} className="text-gray-700 mb-2">{rec}</li>
+            <li key={idx} className="mb-2">{rec}</li>
           ))}
         </ul>
-
-        <div className="mt-8 p-6 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl text-white">
-          <h4 className="text-xl font-bold mb-3">🎯 Chcesz poprawić swoją widoczność?</h4>
-          <p className="mb-4 text-purple-100">
-            Skorzystaj z profesjonalnego audytu Collytics!
-          </p>
-          
-            href="https://www.collytics.io/audyt-widocznosci-ai.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block bg-white text-purple-600 font-bold py-3 px-8 rounded-lg hover:bg-purple-50 transition"
-          >
-            Dowiedz się więcej →
-          </a>
-        </div>
       </div>
     </div>
-  )
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const colors = {
-    good: 'bg-green-100 text-green-700',
-    warning: 'bg-yellow-100 text-yellow-700',
-    error: 'bg-red-100 text-red-700',
-  }
-
-  const labels = {
-    good: '✓ Dobry',
-    warning: '⚠ Wymaga poprawy',
-    error: '✗ Błąd',
-  }
-
-  return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium ${colors[status as keyof typeof colors] || colors.warning}`}>
-      {labels[status as keyof typeof labels] || 'Nieznany'}
-    </span>
   )
 }
