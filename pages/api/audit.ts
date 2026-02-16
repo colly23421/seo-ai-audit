@@ -150,7 +150,7 @@ function analyzeJsonLd($: cheerio.CheerioAPI) {
         const schema = {
           type: data['@type'] || (Array.isArray(data) ? data[0]['@type'] : 'Unknown'),
           valid: true,
-          errors: [],
+          errors: [] as string[],
           data,
         }
 
